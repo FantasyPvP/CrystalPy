@@ -18,13 +18,10 @@ class Crystal(GenericAssistant):
             try:
                 self.load_model(model_name=model_name)
             except Exception as e:
-                log.log(f"{e}", log.ERROR)
             return
 
-        log.log(f"Training Model '{model_name}'", log.STATUS)
         self.train_model()
         self.save_model(model_name=model_name)
-        log.log(f"Saved Model '{model_name}'", log.STATUS, colour=log.GREEN)
 
 
     def mainloop(self):
@@ -36,7 +33,6 @@ class Crystal(GenericAssistant):
             s.listen()
             s.setblocking(False)
             sel.register(s, selectors.EVENT_READ, data=None)
-            log.log(f"Listening on {self.host}:{self.port}", log.STATUS)
             try:
                 while True:
                     events = sel.select(timeout=None)
@@ -50,13 +46,11 @@ class Crystal(GenericAssistant):
                 log.log("KEYBOARD INTERRUPT: EXITING", log.STATUS)
                 
             except Exception as e:
-                log.log(f"{e}", log.ERROR)
                 sel.close()
             
 
     def accept_wrapper(self, sock):
         conn, addr = sock.accept()
-        log.log(f"client at {addr[0]}:{addr[1]} connected!", log.STATUS, colour=log.GREEN)
         conn.setblocking(False)
         data = types.SimpleNamespace(addr=addr, inb="", outb=b"")
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
@@ -73,13 +67,11 @@ class Crystal(GenericAssistant):
                 response = self.process(recv_data.decode("utf-8"))
                 data.outb += response.encode("utf-8")
             else:
-                log.log(f"closing connection from {data.addr[0]}:{data.addr[1]}", log.STATUS)
                 sel.unregister(sock)
                 sock.close()
             
         if mask & selectors.EVENT_WRITE:
             if data.outb:
-                log.log(f"returning \"{data.outb.decode('utf-8')}\" to {data.addr}", log.STATUS)
                 sent = sock.send(data.outb)
                 data.outb = data.outb[sent:]
 

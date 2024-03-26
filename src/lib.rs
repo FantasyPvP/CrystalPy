@@ -22,4 +22,5 @@ pub enum ErrorType {
     NameError,
     TypeError,
     Placeholder,
+    IndentationError
 }

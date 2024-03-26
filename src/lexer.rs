@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Display, format};
 use crate::{CompileError, ErrorType};
 
 #[derive(Debug, Clone)]
@@ -9,7 +9,9 @@ enum LexerState {
     StringLiteral(String),
     MultilineStringLiteral(String),
     CharLiteral(Option<char>),
-    Operator(char),
+    Operator(String),
+    NewLine(usize),
+    Comment,
 }
 
 pub struct Lexer {
@@ -43,7 +45,7 @@ impl Lexer {
 
         for c in code.chars() {
             'inner: loop {
-                println!("{:?} {:?}", self.state, self.tokens.last());
+                // println!("{:?} {:?}", self.state, self.tokens.last());
                 match self.state.clone() {
                     LexerState::None => {
                         match c {
@@ -55,9 +57,9 @@ impl Lexer {
                                 self.tok_col = self.col;
                                 self.state = LexerState::NumberLiteral(c.to_string());
                             },
-                            '=' | '+' | '-' | '*' | '/' => {
+                            '=' | '+' | '-' | '*' | '/' | '<' | '>' | '!' | '%' => {
                                 self.tok_col = self.col;
-                                self.state = LexerState::Operator(c);
+                                self.state = LexerState::Operator(c.to_string());
                             },
                             ' ' => {
                                 ()
@@ -65,7 +67,12 @@ impl Lexer {
                             '.' => self.tokens.push(Token::new(&self, TT::Dot)),
                             '\n' => {
                                 self.newline();
+                                self.tokens.push(Token::new(&self, TT::Newline));
+                                self.state = LexerState::NewLine(0)
                             },
+                            '#' => {
+                                self.state = LexerState::Comment;
+                            }
                             ',' => self.tokens.push(Token::new(&self, TT::Comma)),
                             ':' => self.tokens.push(Token::new(&self, TT::Colon)),
                             '(' => self.tokens.push(Token::new(&self, TT::LParen)),
@@ -74,10 +81,10 @@ impl Lexer {
                             ']' => self.tokens.push(Token::new(&self, TT::RBracket)),
                             '{' => self.tokens.push(Token::new(&self, TT::LBrace)),
                             '}' => self.tokens.push(Token::new(&self, TT::RBrace)),
-                            '|' => self.tokens.push(Token::new(&self, TT::BitWiseOr)),
-                            '&' => self.tokens.push(Token::new(&self, TT::BitWiseAnd)),
-                            '^' => self.tokens.push(Token::new(&self, TT::BitWiseXor)),
-                            '~' => self.tokens.push(Token::new(&self, TT::BitWiseNot)),
+                            '|' => self.tokens.push(Token::new(&self, TT::BitwiseOr)),
+                            '&' => self.tokens.push(Token::new(&self, TT::BitwiseAnd)),
+                            '^' => self.tokens.push(Token::new(&self, TT::BitwiseXor)),
+                            '~' => self.tokens.push(Token::new(&self, TT::BitwiseNot)),
                             '\"' => {
                                 self.tok_col = self.col;
                                 self.state = LexerState::StringLiteral(String::new());
@@ -92,6 +99,15 @@ impl Lexer {
                             }
                         }
                     },
+                    LexerState::NewLine(x) => {
+                        if c == ' ' {
+                            self.state = LexerState::NewLine(x + 1)
+                        } else {
+                            self.tokens.push(Token::new(&self, TT::Whitespace(x)));
+                            self.state = LexerState::None;
+                            continue 'inner;
+                        }
+                    }
                     LexerState::CharLiteral(char_) => {
                         if let Some(c) = char_ {
                             if c == '\'' {
@@ -101,12 +117,20 @@ impl Lexer {
                             }
                         }
                     },
+                    LexerState::Comment => {
+                        if c == '\n' {
+                            self.state = LexerState::None;
+                            continue 'inner
+                        }
+                    }
                     LexerState::StringLiteral(string) => {
                         if string == "\"" && c == '\"' {
                             self.tok_col = self.col - 2;
                             self.state = LexerState::MultilineStringLiteral(String::new());
                         } else if string.ends_with("\"") {
-                            self.tokens.push(Token::new(&self, TT::StringLiteral(string)));
+                            let mut s = string;
+                            s.pop().unwrap();
+                            self.tokens.push(Token::new(&self, TT::StringLiteral(s)));
                             self.state = LexerState::None;
                             continue 'inner;
                         } else if c == '\n' {
@@ -137,17 +161,38 @@ impl Lexer {
                         }
                     }
                     LexerState::Operator(operator) => {
-                        if c == ' ' || c == '\n' {
-                            match operator {
-                                '+' => self.tokens.push(Token::new(&self, TT::OpAdd)),
-                                '-' => self.tokens.push(Token::new(&self, TT::OpSub)),
-                                '*' => self.tokens.push(Token::new(&self, TT::OpMul)),
-                                '/' => self.tokens.push(Token::new(&self, TT::OpDiv)),
-                                '=' => self.tokens.push(Token::new(&self, TT::Assign)),
-                                _ => panic!("This should be unreachable!"),
-                            };
-                            self.state = LexerState::None;
-                            continue 'inner;
+                        match c {
+                            '='|'+'|'-'|'*'|'/'|'<'|'>'|'!'|'%' => {
+                                self.state = LexerState::Operator(format!("{operator}{c}").to_string());
+                            }
+                            _ => {
+                                match operator.as_str() {
+                                    "+" => self.tokens.push(Token::new(&self, TT::OpAdd)),
+                                    "+=" => self.tokens.push(Token::new(&self, TT::AssignAdd)),
+                                    "-" => self.tokens.push(Token::new(&self, TT::OpSub)),
+                                    "-=" => self.tokens.push(Token::new(&self, TT::AssignSub)),
+                                    "*" => self.tokens.push(Token::new(&self, TT::OpMul)),
+                                    "*=" => self.tokens.push(Token::new(&self, TT::AssignMul)),
+                                    "/" => self.tokens.push(Token::new(&self, TT::OpDiv)),
+                                    "/=" => self.tokens.push(Token::new(&self, TT::AssignDiv)),
+                                    "%" => self.tokens.push(Token::new(&self, TT::OpMod)),
+                                    "%=" => self.tokens.push(Token::new(&self, TT::AssignMod)),
+                                    "**" => self.tokens.push(Token::new(&self, TT::OpPow)),
+                                    "**=" => self.tokens.push(Token::new(&self, TT::AssignPow)),
+                                    "//" => self.tokens.push(Token::new(&self, TT::OpFloorDiv)),
+                                    "//=" => self.tokens.push(Token::new(&self, TT::AssignFloorDiv)),
+                                    "<" => self.tokens.push(Token::new(&self, TT::CompLt)),
+                                    ">" => self.tokens.push(Token::new(&self, TT::CompGt)),
+                                    "=" => self.tokens.push(Token::new(&self, TT::Assign)),
+                                    "==" => self.tokens.push(Token::new(&self, TT::CompEq)),
+                                    "!=" => self.tokens.push(Token::new(&self, TT::CompNeq)),
+                                    "<=" => self.tokens.push(Token::new(&self, TT::CompLte)),
+                                    ">=" => self.tokens.push(Token::new(&self, TT::CompGte)),
+                                    _ => return Err(CompileError::new(&self, ErrorType::SyntaxError))
+                                }
+                                self.state = LexerState::None;
+                                continue 'inner;
+                            }
                         }
                     },
                     LexerState::IdentOrKeyword(val) => {
@@ -219,7 +264,7 @@ impl Token {
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<{:?}>", self.type_)
+        write!(f, "{}", self.type_)
     }
 }
 
@@ -230,11 +275,12 @@ pub enum TT {
     FloatLiteral(f64),
     CharacterLiteral(char),
     StringLiteral(String),
+    Whitespace(usize),
+
 
     // other
     Identifier(String),
     Keyword(Keyword),
-    LineStart(usize), // for indentation
 
     // Arithmetic and Assignment operators
     Assign,
@@ -250,27 +296,25 @@ pub enum TT {
     AssignPow,
     OpMod,
     AssignMod,
+    OpFloorDiv,
+    AssignFloorDiv,
 
     // boolean and bitwise operators
-    OpOr,
     BitwiseOr,
-    OpAnd,
     BitwiseAnd,
-    OpXor,
     BitwiseNot,
-    OpNot,
     BitwiseXor,
 
     BitWiseLeftShift,
     BitWiseRightShift,
 
     // Comparison operators
-    Eq,
-    Neq,
-    Gt,
-    Gte,
-    Lt,
-    Lte,
+    CompEq,
+    CompNeq,
+    CompGt,
+    CompGte,
+    CompLt,
+    CompLte,
 
     // Parenthesis / brackets
     LParen,
@@ -283,7 +327,8 @@ pub enum TT {
     // punctuation
     Colon,
     Comma,
-    Dot
+    Dot,
+    Newline,
 }
 
 #[derive(Debug, Clone)]
@@ -297,6 +342,22 @@ pub enum Keyword {
     Import,
     Try,
     Except,
+}
+
+impl Display for Keyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", {match self {
+            Keyword::Def => "def",
+            Keyword::For => "for",
+            Keyword::While => "while",
+            Keyword::If => "if",
+            Keyword::Elif => "elif",
+            Keyword::Else => "else",
+            Keyword::Import => "import",
+            Keyword::Try => "try",
+            Keyword::Except => "except",
+        }})
+    }
 }
 
 impl TryFrom<&str> for Keyword {
@@ -316,3 +377,81 @@ impl TryFrom<&str> for Keyword {
         }
     }
 }
+
+impl Display for TT {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f, "{}", { match self {
+                TT::IntegerLiteral(val) => val.to_string(),
+                TT::FloatLiteral(val) => val.to_string(),
+                TT::CharacterLiteral(val) => format!("'{val}'").to_string(),
+                TT::StringLiteral(val) => format!("\"{val}\"").to_string(),
+                TT::Identifier(val) => val.to_string(),
+                TT::Keyword(val) => val.to_string(),
+                TT::Whitespace(val) => " ".repeat(*val),
+                TT::Assign => "=".to_string(),
+                TT::OpAdd => "+".to_string(),
+                TT::AssignAdd => "+=".to_string(),
+                TT::OpSub => "-".to_string(),
+                TT::AssignSub => "-=".to_string(),
+                TT::OpMul => "*".to_string(),
+                TT::AssignMul => "*=".to_string(),
+                TT::OpDiv => "/".to_string(),
+                TT::AssignDiv => "/=".to_string(),
+                TT::OpPow => "**".to_string(),
+                TT::AssignPow => "**=".to_string(),
+                TT::OpMod => "%".to_string(),
+                TT::AssignMod => "%=".to_string(),
+                TT::OpFloorDiv => "//".to_string(),
+                TT::AssignFloorDiv => "//=".to_string(),
+                TT::BitwiseOr => "|".to_string(),
+                TT::BitwiseAnd => "&".to_string(),
+                TT::BitwiseNot => "~".to_string(),
+                TT::BitwiseXor => "^".to_string(),
+                TT::BitWiseLeftShift => "<<".to_string(),
+                TT::BitWiseRightShift => ">>".to_string(),
+                TT::CompEq => "==".to_string(),
+                TT::CompNeq => "!=".to_string(),
+                TT::CompGt => ">".to_string(),
+                TT::CompGte => ">=".to_string(),
+                TT::CompLt => "<".to_string(),
+                TT::CompLte => "<=".to_string(),
+                TT::LParen => "(".to_string(),
+                TT::RParen => ")".to_string(),
+                TT::LBracket => "[".to_string(),
+                TT::RBracket => "]".to_string(),
+                TT::LBrace => "{".to_string(),
+                TT::RBrace => "}".to_string(),
+                TT::Colon => ":".to_string(),
+                TT::Comma => ",".to_string(),
+                TT::Dot => ".".to_string(),
+                TT::Newline => "\n".to_string(),
+            }}
+        )
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
