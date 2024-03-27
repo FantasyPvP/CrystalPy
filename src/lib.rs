@@ -1,5 +1,6 @@
 
 pub mod lexer;
+pub mod parser;
 
 #[derive(Debug)]
 pub struct CompileError {

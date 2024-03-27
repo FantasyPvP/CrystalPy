@@ -244,16 +244,36 @@ impl Lexer {
             }
             self.col += 1;
         }
-        Ok(self.tokens.clone())
+
+        let mut res = self.tokens.clone();
+
+        // eliminate lines that contain only newlines and whitespace or comments
+        let mut empty= false;
+        let mut line = 1;
+
+        for c in self.tokens.iter() {
+            if c.line != line {
+                if empty {
+                    res.retain(|x| x.line != line);
+                }
+                empty = true;
+                line = c.line;
+            }
+            match c.type_ {
+                TT::Whitespace(_) | TT::Newline => {},
+                _ => empty = false,
+            }
+        }
+        Ok(res)
     }
 }
 
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    line: usize,
-    col: usize,
-    type_: TT,
+    pub line: usize,
+    pub col: usize,
+    pub type_: TT,
 }
 
 impl Token {
@@ -268,7 +288,7 @@ impl Display for Token {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TT {
     // literals
     IntegerLiteral(i64),
@@ -331,7 +351,7 @@ pub enum TT {
     Newline,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Keyword {
     Def,
     For,
@@ -425,7 +445,7 @@ impl Display for TT {
                 TT::Colon => ":".to_string(),
                 TT::Comma => ",".to_string(),
                 TT::Dot => ".".to_string(),
-                TT::Newline => "\n".to_string(),
+                TT::Newline => " \\n\n".to_string(),
             }}
         )
     }
