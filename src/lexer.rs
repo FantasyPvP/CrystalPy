@@ -408,7 +408,7 @@ impl Display for TT {
                 TT::StringLiteral(val) => format!("\"{val}\"").to_string(),
                 TT::Identifier(val) => val.to_string(),
                 TT::Keyword(val) => val.to_string(),
-                TT::Whitespace(val) => " ".repeat(*val),
+                TT::Whitespace(val) => format!("{} {}", val, " ".repeat(*val)),
                 TT::Assign => "=".to_string(),
                 TT::OpAdd => "+".to_string(),
                 TT::AssignAdd => "+=".to_string(),

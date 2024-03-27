@@ -1,15 +1,15 @@
+use crate::CompileError;
+use crate::ErrorType::Placeholder;
 use crate::lexer::{Token, TT};
 
 pub struct Parser {
-    tok_idx: usize,
-    indent: usize,
+    tokens: Vec<Token>,
 }
 
 impl Parser {
     pub fn new() -> Parser {
         Parser {
-            tok_idx: 0,
-            indent: 0,
+            tokens: Vec::new(),
         }
     }
 
@@ -28,15 +28,18 @@ impl Parser {
     }
 
     pub fn parse(&self, tokens: Vec<Token>) -> Node {
+        Node::Integer(2)
+    }
 
-        for l in self.lines(&tokens) {
-            for t in l {
-                print!("{} ", t);
+    fn scopes(&mut self, lines: &Vec<Vec<Token>>, idx: usize, indent: usize) -> Result<Vec<Node>, CompileError> {
+        let current = lines[idx].clone();
+        if let TT::Whitespace(x) = current[0].type_ {
+            if x != indent {
+                return Err(CompileError::Placeholder);
             }
-            println!("");
         }
 
-        Node::Integer(2)
+        Ok(Vec::new())
     }
 }
 
